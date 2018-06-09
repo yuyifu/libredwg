@@ -52,7 +52,7 @@ static bool env_var_checked_p;
 Dwg_Object *dwg_resolve_handle_silent (const Dwg_Data *dwg,
                                        const BITCODE_BL absref);
 
-static int
+int
 dat_read_file (Bit_Chain *restrict dat, FILE *restrict fp,
                const char *restrict filename)
 {
@@ -79,7 +79,7 @@ dat_read_file (Bit_Chain *restrict dat, FILE *restrict fp,
   return 0;
 }
 
-static int
+int
 dat_read_stream (Bit_Chain *restrict dat, FILE *restrict fp)
 {
   size_t size = 0;
