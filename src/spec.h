@@ -305,4 +305,7 @@
 
 #endif
 
+/* for dxf */
+int dxf_cvt_lweight(const BITCODE_RC value);
+
 #endif /* SPEC_H */

@@ -635,6 +635,17 @@ dxf_write_xdata(Bit_Chain *restrict dat, Dwg_Resbuf *restrict rbuf, BITCODE_BL s
 #undef DXF_3DSOLID
 #define DXF_3DSOLID dxf_3dsolid(dat, obj, (Dwg_Entity_3DSOLID*)_obj);
 
+int
+dxf_cvt_lweight(const BITCODE_RC value)
+{
+    // See https://sourceforge.net/p/libdwg/tickets/7/
+    const int celweights[] = {0, 5, 9, 13, 15, 18, 20, 25, 30, 35,
+                              40, 50, 53, 60, 70, 80, 90, 100, 106,
+                              120, 140, 158, 200, 211, /*??:*/0,0,0,0,0,
+                              /*29:*/-1, -2, -3};
+    return celweights[value % 32];
+}
+
 // r13+ converts STANDARD to Standard, BYLAYER to ByLayer, BYBLOCK to ByBlock
 static void
 dxf_cvt_tablerecord(Bit_Chain *restrict dat, const Dwg_Object *restrict obj,

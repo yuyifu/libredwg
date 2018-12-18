@@ -70,7 +70,9 @@ extern "C" {
 # define FORMAT_RC "0x%2x"
 #else
 # define FORMAT_RC "0x%hhx"
-# endif
+#endif
+#define FORMAT_RCs "%d"
+#define BITCODE_RCs signed char
 #define BITCODE_B unsigned char
 #define FORMAT_B "%d"
 #define BITCODE_BB unsigned char
@@ -806,7 +808,7 @@ typedef struct _dwg_header_variables {
   BITCODE_H DICTIONARY_LIGHTLIST;   /*!< r2010+ ?? */
   BITCODE_H unknown_20;             /*!< r2013+ */
   BITCODE_BL FLAGS;
-  BITCODE_B  CELWEIGHT; /* = FLAGS & 0x1f */
+  BITCODE_RC CELWEIGHT; /* = FLAGS & 0x1f (see dxf_cvt_lweight) */
   BITCODE_B  ENDCAPS;   /* = FLAGS & 0x60 */
   BITCODE_B  JOINSTYLE; /* = FLAGS & 0x180 */
   BITCODE_B  LWDISPLAY; /* = !(FLAGS & 0x200) */
@@ -1905,7 +1907,7 @@ typedef struct _dwg_object_LAYER
   BITCODE_B frozen_in_new;
   BITCODE_B locked;
   BITCODE_B plotflag;
-  BITCODE_RS linewidth;
+  BITCODE_RC linewidth;
   //BITCODE_BS flag_s;
   BITCODE_CMC color;
   short      color_rs;    /* preR13, needs to be signed */

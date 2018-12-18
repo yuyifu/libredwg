@@ -2359,8 +2359,9 @@ DWG_OBJECT(LAYER)
     FIELD_VALUE(plotflag) = flag & (1<<15) ? 1 : 0;
     FIELD_VALUE(linewidth) = (flag & 0x03E0) >> 5;
     DXF_OR_PRINT {
+      int lw = dxf_cvt_lweight(FIELD_VALUE(linewidth));
       FIELD_B(plotflag, 290);
-      FIELD_RS(linewidth, 370);
+      VALUE_RS(lw, 370);
     }
   }
   FIELD_CMC (color, 62,420);
