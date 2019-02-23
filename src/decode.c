@@ -59,6 +59,14 @@ static bool env_var_checked_p;
 #define MIN(X, Y) ((X) < (Y) ? (X) : (Y))
 
 /*------------------------------------------------------------------------------
+ * Imported from
+ */
+#ifdef USE_WRITE
+uint32_t dwg_section_page_checksum (const uint32_t seed, Bit_Chain *dat,
+                                    uint32_t size);
+#endif
+
+/*------------------------------------------------------------------------------
  * Private functions
  */
 
@@ -1577,8 +1585,7 @@ read_R2004_section_map (Bit_Chain *restrict dat, Dwg_Data *restrict dwg)
 {
   BITCODE_RC *decomp, *ptr;
   int i, error;
-  BITCODE_RL section_address;
-  BITCODE_RL bytes_remaining;
+  BITCODE_RL section_address, bytes_remaining, checksum, orig_checksum;
   uint32_t comp_data_size = dwg->r2004_header.comp_data_size;
   uint32_t decomp_data_size = dwg->r2004_header.decomp_data_size;
 
@@ -1593,15 +1600,33 @@ read_R2004_section_map (Bit_Chain *restrict dat, Dwg_Data *restrict dwg)
       return DWG_ERR_OUTOFMEM;
     }
 
+  section_address = dat->byte;
   error = decompress_R2004_section (dat, decomp, decomp_data_size + 1024,
                                     comp_data_size);
   if (error > DWG_ERR_CRITICAL)
     return error;
   LOG_TRACE ("\n#### Read 2004 Section Page Map ####\n")
 
+#ifdef USE_WRITE
+  // FIXME: check checksum (ODA p.27)
+  bytes_remaining = dat->byte; // after decomp
+  dat->byte = 0;
+  orig_checksum = dwg->r2004_header.checksum;
+  dwg->r2004_header.checksum = 0;
+  checksum = dwg_section_page_checksum (0, dat, sizeof (dwg->r2004_header));
+  dwg->r2004_header.checksum = orig_checksum;
+  dat->byte = section_address; // before decomp
+  checksum = dwg_section_page_checksum (checksum, dat, decomp_data_size);
+  if (checksum != orig_checksum)
+    LOG_INFO (
+        "Invalid 2004 System Section Page checksum 0x%08x != 0x%08x (TODO)\n",
+        checksum, orig_checksum)
+  dat->byte = bytes_remaining;
+#endif
+
   section_address = 0x100; // starting address
-  i = 0;
   bytes_remaining = decomp_data_size;
+  i = 0;
   ptr = decomp;
   dwg->header.num_sections = 0;
 
@@ -1620,7 +1645,7 @@ read_R2004_section_map (Bit_Chain *restrict dat, Dwg_Data *restrict dwg)
         }
 
       /* endian specific code: */
-      bfr_read (&dwg->header.section[i], &ptr, 8);
+      bfr_read (&dwg->header.section[i], &ptr, 8); // only the first two fields
       dwg->header.section[i].address = section_address;
       section_address += dwg->header.section[i].size;
       bytes_remaining -= 8;
@@ -1649,14 +1674,14 @@ read_R2004_section_map (Bit_Chain *restrict dat, Dwg_Data *restrict dwg)
 
 // index is the Section Number in the section map
 static Dwg_Section *
-find_section (Dwg_Data *dwg, unsigned long int index)
+find_section (Dwg_Data *dwg, int32_t index)
 {
-  BITCODE_BL i;
+  BITCODE_RL i;
   if (dwg->header.section == 0 || index == 0)
     return 0;
   for (i = 0; i < dwg->header.num_sections; ++i)
     {
-      if ((unsigned long int)dwg->header.section[i].number == index)
+      if (dwg->header.section[i].number == index)
         return &dwg->header.section[i];
     }
   return NULL;
@@ -1718,7 +1743,7 @@ read_R2004_section_info (Bit_Chain *restrict dat, Dwg_Data *restrict dwg,
         }
       info = &dwg->header.section_info[i];
       /* endian specific code */
-      bfr_read (info, &ptr, 32 + 64);
+      bfr_read (info, &ptr, 32 + 64); // fields + name[64]
 
       LOG_TRACE ("\nsection_info[%d] fields:\n", i)
       LOG_TRACE ("size:            %ld\n", (long)info->size)
@@ -1764,15 +1789,6 @@ read_R2004_section_info (Bit_Chain *restrict dat, Dwg_Data *restrict dwg,
               } page;
               /* endian specific code: */
               bfr_read (&page, &ptr, 16);
-#if 0
-              section_number = *((int32_t*)ptr);     // Index into SectionMap
-              data_size      = *((uint32_t*)ptr + 1);
-              address        = *((uint64_t*)ptr + 2); // TODO avoid alignment ubsan
-              //address   = *((uint32_t*)ptr + 2);
-              //address <<= 32;
-              //address  += *((uint32_t*)ptr + 3);
-              ptr += 16; /* 4*4 */
-#endif
               sum_decomp += page.size; /* TODO: uncompressed size */
 #if 0
               if (page.address < sum_decomp)
@@ -1865,7 +1881,6 @@ static int
 read_2004_compressed_section (Bit_Chain *dat, Dwg_Data *restrict dwg,
                               Bit_Chain *sec_dat, BITCODE_RL section_type)
 {
-  uint32_t address, sec_mask;
   uint32_t max_decomp_size;
   Dwg_Section_Info *info = NULL;
   encrypted_section_header es;
@@ -1912,6 +1927,7 @@ read_2004_compressed_section (Bit_Chain *dat, Dwg_Data *restrict dwg,
 
   for (i = 0; i < info->pagecount; ++i)
     {
+      uint32_t address, sec_mask;
       if (!info->sections[i])
         {
           LOG_WARN ("Skip empty section %u %s", i, info->name);
@@ -1942,8 +1958,8 @@ read_2004_compressed_section (Bit_Chain *dat, Dwg_Data *restrict dwg,
       LOG_INFO ("Comp data size:   0x%x\n", (unsigned)es.fields.section_size)
       LOG_TRACE ("StartOffset:      0x%x\n", (unsigned)es.fields.address)
       LOG_HANDLE ("Unknown:          0x%x\n", (unsigned)es.fields.unknown);
-      LOG_HANDLE ("Checksum1:        0x%x\n", (unsigned)es.fields.checksum_1)
-      LOG_HANDLE ("Checksum2:        0x%x\n\n", (unsigned)es.fields.checksum_2)
+      LOG_HANDLE ("Checksum1:        0x%X\n", (unsigned)es.fields.checksum_1)
+      LOG_HANDLE ("Checksum2:        0x%X\n\n", (unsigned)es.fields.checksum_2)
 
       error = decompress_R2004_section (
           dat, &decomp[i * info->max_decomp_size],       // offset
@@ -2317,7 +2333,9 @@ decode_R2004_header (Bit_Chain *restrict file_dat, Dwg_Data *restrict dwg)
    * Section Page Map
    */
   {
+    BITCODE_RL checksum;
     Bit_Chain *dat = file_dat;
+    BITCODE_RL old_address;
     dat->byte = dwg->r2004_header.section_map_address + 0x100;
 
     LOG_TRACE ("\n=== Read System Section (Section Page Map) ===\n\n")
@@ -2331,7 +2349,7 @@ decode_R2004_header (Bit_Chain *restrict file_dat, Dwg_Data *restrict dwg)
     FIELD_RL (decomp_data_size, 0);
     FIELD_RL (comp_data_size, 0);
     FIELD_RL (compression_type, 0);
-    FIELD_RLx (checksum, 0); // see dwg_section_page_checksum()
+    FIELD_RLx (checksum, 0);
   }
 
   return error;
